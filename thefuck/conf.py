@@ -17,13 +17,26 @@ except ImportError:
     from imp import load_source
 
 
+def _parse_colon_separated_pairs(val, value_separator=None):
+    """Parses a colon-separated string into a list of items.
+
+    If `value_separator` is given, splits each item on that separator
+    and returns a dict of {key: value} pairs, skipping malformed entries.
+    """
+    parts = val.split(':')
+    if value_separator is None:
+        return parts
+    result = {}
+    for part in parts:
+        try:
+            key, value = part.split(value_separator, 1)
+            result[key] = value
+        except ValueError:
+            continue
+    return result
+
+
 class Settings(dict):
-    def __getattr__(self, item):
-        return self.get(item)
-
-    def __setattr__(self, key, value):
-        self[key] = value
-
     def init(self, args=None):
         """Fills `settings` with values from `settings.py` and env."""
         from .logs import exception
@@ -44,7 +57,7 @@ class Settings(dict):
         self.update(self._settings_from_args(args))
 
     def _init_settings_file(self):
-        settings_path = self.user_dir.joinpath('settings.py')
+        settings_path = self['user_dir'].joinpath('settings.py')
         if not settings_path.is_file():
             with settings_path.open(mode='w') as settings_file:
                 settings_file.write(const.SETTINGS_HEADER)
@@ -72,31 +85,27 @@ class Settings(dict):
         rules_dir = user_dir.joinpath('rules')
         if not rules_dir.is_dir():
             rules_dir.mkdir(parents=True)
-        self.user_dir = user_dir
+        self['user_dir'] = user_dir
 
     def _settings_from_file(self):
         """Loads settings from file."""
         settings = load_source(
-            'settings', text_type(self.user_dir.joinpath('settings.py')))
+            'settings', text_type(self['user_dir'].joinpath('settings.py')))
         return {key: getattr(settings, key)
                 for key in const.DEFAULT_SETTINGS.keys()
                 if hasattr(settings, key)}
 
     def _rules_from_env(self, val):
         """Transforms rules list from env-string to python."""
-        val = val.split(':')
+        val = _parse_colon_separated_pairs(val)
         if 'DEFAULT_RULES' in val:
             val = const.DEFAULT_RULES + [rule for rule in val if rule != 'DEFAULT_RULES']
         return val
 
     def _priority_from_env(self, val):
         """Gets priority pairs from env."""
-        for part in val.split(':'):
-            try:
-                rule, priority = part.split('=')
-                yield rule, int(priority)
-            except ValueError:
-                continue
+        pairs = _parse_colon_separated_pairs(val, value_separator='=')
+        return {rule: int(priority) for rule, priority in pairs.items()}
 
     def _val_from_env(self, env, attr):
         """Transforms env-strings to python."""
@@ -104,7 +113,7 @@ class Settings(dict):
         if attr in ('rules', 'exclude_rules'):
             return self._rules_from_env(val)
         elif attr == 'priority':
-            return dict(self._priority_from_env(val))
+            return self._priority_from_env(val)
         elif attr in ('wait_command', 'history_limit', 'wait_slow_command',
                       'num_close_matches'):
             return int(val)
