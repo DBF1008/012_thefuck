@@ -36,9 +36,13 @@ def get_new_command(command):
         # the only non-qualified permitted options are the repository and refspec; git's
         # suggestion include them, so they won't be lost, but would be duplicated otherwise.
         push_idx = command_parts.index('push') + 1
-        while len(command_parts) > push_idx and command_parts[len(command_parts) - 1][0] != '-':
-            command_parts.pop(len(command_parts) - 1)
+        command_parts = command_parts[:push_idx] + [
+            arg for arg in command_parts[push_idx:]
+            if arg.startswith('-')
+        ]
 
-    arguments = re.findall(r'git push (.*)', command.output)[-1].replace("'", r"\'").strip()
+    arguments = re.search(
+        r'git push (--set-upstream .*)', command.output
+    ).group(1).replace("'", r"\'").strip()
     return replace_argument(" ".join(command_parts), 'push',
                             'push {}'.format(arguments))

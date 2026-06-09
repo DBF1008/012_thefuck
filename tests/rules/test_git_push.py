@@ -16,6 +16,20 @@ To push the current branch and set the remote as upstream, use
 
 
 @pytest.fixture
+def output_with_hint(branch_name):
+    if not branch_name:
+        return ''
+    return '''fatal: The current branch {} has no upstream branch.
+To push the current branch and set the remote as upstream, use
+
+    git push --set-upstream origin {}
+
+To have this automatically for branches without a tracking
+upstream, see 'push.autoSetupRemote' in 'git push --help' for details.
+'''.format(branch_name, branch_name)
+
+
+@pytest.fixture
 def output_bitbucket():
     return '''Total 0 (delta 0), reused 0 (delta 0)
 remote:
@@ -72,4 +86,28 @@ def test_not_match(output, script, branch_name):
     ('git push --force-with-lease', 'master',
      'git push --set-upstream origin master --force-with-lease')])
 def test_get_new_command(output, script, branch_name, new_command):
+    assert get_new_command(Command(script, output)) == new_command
+
+
+@pytest.mark.parametrize('script, branch_name, new_command', [
+    ('git push', 'master',
+     'git push --set-upstream origin master'),
+    ('git push --quiet', 'master',
+     'git push --set-upstream origin master --quiet'),
+    ('git push origin', 'master',
+     'git push --set-upstream origin master'),
+])
+def test_get_new_command_with_hint(output_with_hint, script, branch_name, new_command):
+    assert get_new_command(Command(script, output_with_hint)) == new_command
+
+
+@pytest.mark.parametrize('script, branch_name, new_command', [
+    ('git push origin feature/my-branch', 'feature/my-branch',
+     'git push --set-upstream origin feature/my-branch'),
+    ('git push origin master:master', 'master',
+     'git push --set-upstream origin master'),
+    ('git push --force origin feature/my-branch', 'feature/my-branch',
+     'git push --set-upstream origin feature/my-branch --force'),
+])
+def test_get_new_command_with_special_args(output, script, branch_name, new_command):
     assert get_new_command(Command(script, output)) == new_command
